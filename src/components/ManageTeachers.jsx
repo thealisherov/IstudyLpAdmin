@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Upload, X, User, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
+import BackToDashboard from './BacktoDashboard';
 
 const ManageTeachers = () => {
   const supabase = useSupabaseClient();
@@ -227,6 +228,7 @@ const ManageTeachers = () => {
 
   return (
     <div className="p-8">
+        <BackToDashboard/>
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold">O'qituvchilarni Boshqarish</h1>

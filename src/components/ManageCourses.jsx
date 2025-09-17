@@ -1,8 +1,9 @@
 // admin/src/components/ManageCourses.jsx
 import React, { useState, useEffect } from 'react';
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Upload, X, Image } from 'lucide-react';
+import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Upload, X, Image, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
+import BackToDashboard from './BacktoDashboard';
 
 const ManageCourses = () => {
   const supabase = useSupabaseClient();
@@ -165,6 +166,7 @@ const ManageCourses = () => {
 
   return (
     <div className="p-8">
+        <BackToDashboard/>
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold">Kurslarni Boshqarish</h1>
