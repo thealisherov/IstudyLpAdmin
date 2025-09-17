@@ -3,10 +3,19 @@ import React from 'react';
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { useNavigate } from 'react-router-dom';
+import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { BookOpen } from 'lucide-react';
 
 const Login = () => {
   const navigate = useNavigate();
+  const supabase = useSupabaseClient();
+  const user = useUser();
+
+  React.useEffect(() => {
+    if (user) {
+      navigate('/dashboard');
+    }
+  }, [user, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100">
@@ -19,14 +28,17 @@ const Login = () => {
           <p className="text-gray-600">Kirish uchun hisobingizdan foydalaning</p>
         </div>
         <Auth
-          supabaseClient={window.supabase} // Global sifatida o'rnatish kerak (index.html da)
-          appearance={{ theme: ThemeSupa }}
-          providers={['google', 'github']} // Ixtiyoriy, local email/password default
-          onAuthStateChange={(event, session) => {
-            if (event === 'SIGNED_IN') {
-              navigate('/dashboard');
+          supabaseClient={supabase}
+          appearance={{ 
+            theme: ThemeSupa,
+            style: {
+              button: { background: '#7c3aed', color: 'white' },
+              anchor: { color: '#7c3aed' }
             }
           }}
+          providers={['google']}
+          redirectTo={window.location.origin + '/dashboard'}
+          onlyThirdPartyProviders={false}
         />
       </div>
     </div>

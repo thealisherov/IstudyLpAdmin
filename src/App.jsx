@@ -8,11 +8,16 @@ import Dashboard from './components/Dashboard';
 import ManageCourses from './components/ManageCourses';
 import ManageTeachers from './components/ManageTeachers';
 import ManageResults from './components/ManageResults';
-import { Toaster } from 'react-hot-toast'; // Ogohlantirishlar uchun (npm install react-hot-toast)
+import { Toaster } from 'react-hot-toast';
 
-// Supabase client
-const supabaseUrl = 'YOUR_SUPABASE_URL';
-const supabaseKey = 'YOUR_SUPABASE_ANON_KEY';
+// Supabase client with environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const App = () => {
@@ -52,10 +57,16 @@ const ProtectedRoute = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen">Yuklanmoqda...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600"></div>
+    </div>
+  );
+  
   if (!session) return <Navigate to="/login" />;
 
   return children;
 };
 
+export { supabase };
 export default App;
