@@ -1,12 +1,11 @@
 // admin/src/components/ManageResults.jsx
 import React, { useState, useEffect } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Upload, X, User, Award } from 'lucide-react';
+import { supabase } from '../App';
 import toast from 'react-hot-toast';
 import BackToDashboard from './BacktoDashboard';
 
 const ManageResults = () => {
-  const supabase = useSupabaseClient();
   const [results, setResults] = useState([]);
   const [newResult, setNewResult] = useState({
     student_name: '',
@@ -49,20 +48,25 @@ const ManageResults = () => {
 
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('student-avatars')
-        .upload(filePath, file);
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
       if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage.from('student-avatars').getPublicUrl(filePath);
+      const { data } = supabase.storage
+        .from('student-avatars')
+        .getPublicUrl(fileName);
+
       return data.publicUrl;
     } catch (error) {
-      toast.error('Rasm yuklashda xato');
-      console.error('Error uploading image:', error);
+      console.error('Upload error:', error);
+      toast.error('Rasm yuklashda xato: ' + error.message);
       return null;
     }
   };
@@ -72,9 +76,15 @@ const ManageResults = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Check file size (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
-      // 5MB limit
       toast.error('Rasm hajmi 5MB dan kichik bo\'lishi kerak');
+      return;
+    }
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Faqat rasm fayllari qabul qilinadi');
       return;
     }
 
@@ -87,7 +97,7 @@ const ManageResults = () => {
       } else {
         setNewResult({ ...newResult, avatar_url: imageUrl });
       }
-      toast.success('Rasm yuklandi');
+      toast.success('Rasm muvaffaqiyatli yuklandi!');
     }
     setUploading(false);
   };
@@ -101,11 +111,13 @@ const ManageResults = () => {
     }
 
     try {
-      const { error } = await supabase.from('student_results').insert([newResult]);
+      const { error } = await supabase
+        .from('student_results')
+        .insert([newResult]);
 
       if (error) throw error;
 
-      toast.success('Natija qo\'shildi!');
+      toast.success('Natija muvaffaqiyatli qo\'shildi!');
       setNewResult({
         student_name: '',
         course_name: '',
@@ -115,9 +127,9 @@ const ManageResults = () => {
         avatar_url: '',
       });
       setShowForm(false);
-      await fetchResults();
+      fetchResults();
     } catch (error) {
-      toast.error('Natija qo\'shishda xato');
+      toast.error('Natija qo\'shishda xato: ' + error.message);
       console.error('Error adding result:', error);
     }
   };
@@ -138,13 +150,13 @@ const ManageResults = () => {
 
       if (error) throw error;
 
-      toast.success('Natija yangilandi!');
+      toast.success('Natija muvaffaqiyatli yangilandi!');
       setEditingId(null);
       setEditingResult(null);
       setShowForm(false);
-      await fetchResults();
+      fetchResults();
     } catch (error) {
-      toast.error('Natija yangilashda xato');
+      toast.error('Natija yangilashda xato: ' + error.message);
       console.error('Error updating result:', error);
     }
   };
@@ -154,19 +166,30 @@ const ManageResults = () => {
     if (!window.confirm('Natijani o\'chirishni xohlaysizmi?')) return;
 
     try {
-      const { error } = await supabase.from('student_results').delete().eq('id', id);
+      const { error } = await supabase
+        .from('student_results')
+        .delete()
+        .eq('id', id);
 
       if (error) throw error;
 
+      // Delete avatar from storage if exists
       if (avatarUrl) {
-        const fileName = avatarUrl.split('/').pop();
-        await supabase.storage.from('student-avatars').remove([fileName]);
+        try {
+          const fileName = avatarUrl.split('/').pop();
+          await supabase.storage
+            .from('student-avatars')
+            .remove([fileName]);
+        } catch (storageError) {
+          console.error('Error deleting avatar:', storageError);
+          // Don't show error to user as the result was deleted successfully
+        }
       }
 
-      toast.success('Natija o\'chirildi!');
-      await fetchResults();
+      toast.success('Natija muvaffaqiyatli o\'chirildi!');
+      fetchResults();
     } catch (error) {
-      toast.error('Natija o\'chirishda xato');
+      toast.error('Natija o\'chirishda xato: ' + error.message);
       console.error('Error deleting result:', error);
     }
   };
@@ -194,20 +217,28 @@ const ManageResults = () => {
   };
 
   // Pagination logic
-  const paginatedResults = results.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
+  const paginatedResults = results.slice(
+    currentPage * itemsPerPage,
+    (currentPage + 1) * itemsPerPage
+  );
   const totalPages = Math.ceil(results.length / itemsPerPage);
 
   return (
     <div className="p-8">
-        <BackToDashboard/>
+      <BackToDashboard />
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold">Talaba Natijalarini Boshqarish</h1>
           <p className="text-gray-600 mt-2">Jami {results.length} ta natija</p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700"
+          onClick={() => {
+            setShowForm(!showForm);
+            if (showForm) {
+              cancelEdit();
+            }
+          }}
+          className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700 transition-colors"
         >
           {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
           {showForm ? 'Yopish' : 'Natija Qo\'shish'}
@@ -230,7 +261,7 @@ const ManageResults = () => {
                   ? setEditingResult({ ...editingResult, student_name: e.target.value })
                   : setNewResult({ ...newResult, student_name: e.target.value })
               }
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               required
             />
             <input
@@ -242,7 +273,7 @@ const ManageResults = () => {
                   ? setEditingResult({ ...editingResult, course_name: e.target.value })
                   : setNewResult({ ...newResult, course_name: e.target.value })
               }
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               required
             />
           </div>
@@ -257,7 +288,7 @@ const ManageResults = () => {
                   ? setEditingResult({ ...editingResult, position: e.target.value })
                   : setNewResult({ ...newResult, position: e.target.value })
               }
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
             <input
               type="text"
@@ -268,7 +299,7 @@ const ManageResults = () => {
                   ? setEditingResult({ ...editingResult, completion_date: e.target.value })
                   : setNewResult({ ...newResult, completion_date: e.target.value })
               }
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
           </div>
 
@@ -280,7 +311,7 @@ const ManageResults = () => {
                 ? setEditingResult({ ...editingResult, testimonial: e.target.value })
                 : setNewResult({ ...newResult, testimonial: e.target.value })
             }
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             rows={4}
           />
 
@@ -289,12 +320,14 @@ const ManageResults = () => {
             <label className="block text-sm font-medium text-gray-700">Talaba rasmi</label>
             <div className="flex items-center space-x-4">
               <label
-                className={`flex items-center space-x-2 px-4 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 ${
+                className={`flex items-center space-x-2 px-4 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
                   uploading ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
                 <Upload className="w-5 h-5 text-gray-400" />
-                <span className="text-sm text-gray-600">{uploading ? 'Yuklanmoqda...' : 'Rasm tanlang'}</span>
+                <span className="text-sm text-gray-600">
+                  {uploading ? 'Yuklanmoqda...' : 'Rasm tanlang'}
+                </span>
                 <input
                   type="file"
                   accept="image/*"
@@ -331,14 +364,14 @@ const ManageResults = () => {
             <button
               type="submit"
               disabled={uploading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
               {editingId ? 'Yangilash' : 'Qo\'shish'}
             </button>
             <button
               type="button"
               onClick={cancelEdit}
-              className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+              className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
             >
               Bekor qilish
             </button>
@@ -370,12 +403,20 @@ const ManageResults = () => {
                           src={result.avatar_url}
                           alt={result.student_name}
                           className="w-12 h-12 object-cover rounded-full border-2 border-gray-200"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
                         />
-                      ) : (
-                        <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
-                          <User className="w-6 h-6 text-gray-400" />
-                        </div>
-                      )}
+                      ) : null}
+                      <div
+                        className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center"
+                        style={{
+                          display: result.avatar_url ? 'none' : 'flex',
+                        }}
+                      >
+                        <User className="w-6 h-6 text-gray-400" />
+                      </div>
                       <div>
                         <div className="font-medium text-gray-900">{result.student_name}</div>
                         <div className="text-sm text-gray-500">
@@ -410,14 +451,14 @@ const ManageResults = () => {
                     <div className="flex space-x-2">
                       <button
                         onClick={() => startEdit(result)}
-                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg"
+                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Tahrirlash"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => deleteResult(result.id, result.avatar_url)}
-                        className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg"
+                        className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
                         title="O'chirish"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -434,44 +475,38 @@ const ManageResults = () => {
           <div className="text-center py-12">
             <Award className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Hech qanday natija topilmadi</h3>
-            <p className="text-gray-500">Birinchi natijani qo'shish uchun yuqoridagi "Natija Qo'shish" tugmasini bosing</p>
+            <p className="text-gray-500">
+              Birinchi natijani qo'shish uchun yuqoridagi "Natija Qo'shish" tugmasini bosing
+            </p>
           </div>
         )}
 
         {/* Pagination */}
-        {results.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t">
-            <div className="flex items-center text-sm text-gray-500">
-              Jami {results.length} ta natijadan {currentPage * itemsPerPage + 1}-
-              {Math.min((currentPage + 1) * itemsPerPage, results.length)} ko'rsatilmoqda
-            </div>
+        {totalPages > 1 && (
+          <div className="flex justify-between items-center p-4 border-t bg-gray-50">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              className="flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Oldingi
+            </button>
+            
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setCurrentPage(currentPage - 1)}
-                disabled={currentPage === 0}
-                className="p-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              {[...Array(totalPages)].map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setCurrentPage(index)}
-                  className={`px-3 py-1 rounded-lg ${
-                    currentPage === index ? 'bg-purple-600 text-white' : 'hover:bg-gray-100'
-                  }`}
-                >
-                  {index + 1}
-                </button>
-              ))}
-              <button
-                onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage >= totalPages - 1}
-                className="p-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
+              <span className="text-sm text-gray-700">
+                Sahifa <span className="font-medium">{currentPage + 1}</span> / <span className="font-medium">{totalPages}</span>
+              </span>
             </div>
+            
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage === totalPages - 1}
+              className="flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Keyingi
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </button>
           </div>
         )}
       </div>
