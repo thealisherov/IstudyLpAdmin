@@ -1,17 +1,15 @@
 // admin/src/components/Dashboard.jsx
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import { LogOut, BarChart3, BookOpen, Users, Award } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { BarChart3, BookOpen, Users, Award, Settings } from 'lucide-react';
+import { supabase } from '../App';
 import toast from 'react-hot-toast';
 
 const Dashboard = () => {
-  const navigate = useNavigate();
-  const supabase = useSupabaseClient();
-  const [stats, setStats] = React.useState({ courses: 0, teachers: 0, results: 0 });
-  const [loading, setLoading] = React.useState(true);
+  const [stats, setStats] = useState({ courses: 0, teachers: 0, results: 0 });
+  const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     fetchStats();
   }, []);
 
@@ -22,6 +20,10 @@ const Dashboard = () => {
         supabase.from('teachers').select('id', { count: 'exact' }),
         supabase.from('student_results').select('id', { count: 'exact' })
       ]);
+
+      if (coursesRes.error) throw coursesRes.error;
+      if (teachersRes.error) throw teachersRes.error;
+      if (resultsRes.error) throw resultsRes.error;
 
       setStats({
         courses: coursesRes.count || 0,
@@ -36,22 +38,20 @@ const Dashboard = () => {
     }
   };
 
-  const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast.error('Chiqishda xato yuz berdi');
-    } else {
-      toast.success('Chiqish muvaffaqiyatli!');
-      navigate('/login');
-    }
-  };
-
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
       <div className="w-64 bg-white shadow-lg">
         <div className="p-6 border-b">
-          <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
+              <BarChart3 className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Admin Panel</h1>
+              <p className="text-xs text-gray-500">Boshqaruv tizimi</p>
+            </div>
+          </div>
         </div>
         <nav className="p-4 space-y-2">
           <Link 
@@ -63,32 +63,25 @@ const Dashboard = () => {
           </Link>
           <Link 
             to="/courses" 
-            className="flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-700"
+            className="flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
           >
             <BookOpen className="w-5 h-5" />
             <span>Kurslar</span>
           </Link>
           <Link 
             to="/teachers" 
-            className="flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-700"
+            className="flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
           >
             <Users className="w-5 h-5" />
             <span>O'qituvchilar</span>
           </Link>
           <Link 
             to="/results" 
-            className="flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-700"
+            className="flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
           >
             <Award className="w-5 h-5" />
             <span>Natijalar</span>
           </Link>
-          <button
-            onClick={handleLogout}
-            className="flex items-center space-x-3 w-full px-4 py-3 rounded-lg text-gray-700 hover:bg-red-50 hover:text-red-600"
-          >
-            <LogOut className="w-5 h-5" />
-            <span>Chiqish</span>
-          </button>
         </nav>
       </div>
 
@@ -105,7 +98,7 @@ const Dashboard = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-purple-500">
+            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-purple-500 hover:shadow-lg transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-600 text-sm font-medium">Jami Kurslar</p>
@@ -118,7 +111,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-blue-500">
+            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-blue-500 hover:shadow-lg transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-600 text-sm font-medium">O'qituvchilar</p>
@@ -131,7 +124,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500">
+            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500 hover:shadow-lg transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-600 text-sm font-medium">Talaba Natijalari</p>
@@ -148,15 +141,27 @@ const Dashboard = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white p-6 rounded-xl shadow-md">
-            <h3 className="text-xl font-bold mb-4">Xush kelibsiz!</h3>
+            <h3 className="text-xl font-bold mb-4 flex items-center">
+              <Settings className="w-5 h-5 mr-2 text-purple-600" />
+              Admin Panel
+            </h3>
             <p className="text-gray-600 mb-4">
               Bu admin panelida siz barcha ma'lumotlarni boshqarishingiz mumkin. 
               Kurslar, o'qituvchilar va talabalar natijalarini qo'shish, o'zgartirish va o'chirish imkoniyati mavjud.
             </p>
-            <div className="space-y-2 text-sm text-gray-500">
-              <p>• Kurslar bo'limida yangi kurslar qo'shing</p>
-              <p>• O'qituvchilar ma'lumotlarini yangilang</p>
-              <p>• Talabalar natijalarini qayd eting</p>
+            <div className="space-y-3">
+              <div className="flex items-center text-sm text-gray-600">
+                <div className="w-2 h-2 bg-purple-500 rounded-full mr-3"></div>
+                <span>Kurslar bo'limida yangi kurslar qo'shing</span>
+              </div>
+              <div className="flex items-center text-sm text-gray-600">
+                <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
+                <span>O'qituvchilar ma'lumotlarini yangilang</span>
+              </div>
+              <div className="flex items-center text-sm text-gray-600">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                <span>Talabalar natijalarini qayd eting</span>
+              </div>
             </div>
           </div>
 
@@ -165,24 +170,39 @@ const Dashboard = () => {
             <div className="space-y-3">
               <Link 
                 to="/courses" 
-                className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-gray-50"
+                className="flex items-center space-x-3 p-4 rounded-lg border-2 border-dashed border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-all group"
               >
-                <BookOpen className="w-5 h-5 text-purple-600" />
-                <span>Yangi kurs qo'shish</span>
+                <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200 transition-colors">
+                  <BookOpen className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <span className="font-medium text-gray-900">Yangi kurs qo'shish</span>
+                  <p className="text-sm text-gray-500">Kurslar sahifasiga o'ting</p>
+                </div>
               </Link>
               <Link 
                 to="/teachers" 
-                className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-gray-50"
+                className="flex items-center space-x-3 p-4 rounded-lg border-2 border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all group"
               >
-                <Users className="w-5 h-5 text-blue-600" />
-                <span>O'qituvchi qo'shish</span>
+                <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                  <Users className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <span className="font-medium text-gray-900">O'qituvchi qo'shish</span>
+                  <p className="text-sm text-gray-500">O'qituvchilar sahifasiga o'ting</p>
+                </div>
               </Link>
               <Link 
                 to="/results" 
-                className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-gray-50"
+                className="flex items-center space-x-3 p-4 rounded-lg border-2 border-dashed border-gray-200 hover:border-green-300 hover:bg-green-50 transition-all group"
               >
-                <Award className="w-5 h-5 text-green-600" />
-                <span>Natija qo'shish</span>
+                <div className="p-2 bg-green-100 rounded-lg group-hover:bg-green-200 transition-colors">
+                  <Award className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <span className="font-medium text-gray-900">Natija qo'shish</span>
+                  <p className="text-sm text-gray-500">Natijalar sahifasiga o'ting</p>
+                </div>
               </Link>
             </div>
           </div>

@@ -1,12 +1,11 @@
 // admin/src/components/ManageCourses.jsx
 import React, { useState, useEffect } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Upload, X, Image, BookOpen } from 'lucide-react';
+import { supabase } from '../App';
 import toast from 'react-hot-toast';
 import BackToDashboard from './BacktoDashboard';
 
 const ManageCourses = () => {
-  const supabase = useSupabaseClient();
   const [courses, setCourses] = useState([]);
   const [newCourse, setNewCourse] = useState({ title: '', description: '', price: '', category: '', image_url: '' });
   const [editingId, setEditingId] = useState(null);
@@ -21,48 +20,61 @@ const ManageCourses = () => {
   }, []);
 
   const fetchCourses = async () => {
-    const { data, error } = await supabase
-      .from('courses')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (error) {
+    try {
+      const { data, error } = await supabase
+        .from('courses')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setCourses(data || []);
+    } catch (error) {
       toast.error('Kurslarni yuklashda xato');
       console.error('Error fetching courses:', error);
-    } else {
-      setCourses(data || []);
     }
   };
 
   const uploadImage = async (file, bucket = 'course-images') => {
     if (!file) return null;
 
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}.${fileExt}`;
-    const filePath = `${fileName}`;
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(filePath, file);
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-    if (uploadError) {
-      toast.error('Rasm yuklashda xato');
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(fileName);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Rasm yuklashda xato: ' + error.message);
       return null;
     }
-
-    const { data } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(filePath);
-
-    return data.publicUrl;
   };
 
   const handleImageUpload = async (e, isEditing = false) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+    // Check file size (5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
       toast.error('Rasm hajmi 5MB dan kichik bo\'lishi kerak');
+      return;
+    }
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Faqat rasm fayllari qabul qilinadi');
       return;
     }
 
@@ -75,7 +87,7 @@ const ManageCourses = () => {
       } else {
         setNewCourse({ ...newCourse, image_url: imageUrl });
       }
-      toast.success('Rasm yuklandi');
+      toast.success('Rasm muvaffaqiyatli yuklandi!');
     }
     setUploading(false);
   };
@@ -87,18 +99,20 @@ const ManageCourses = () => {
       return;
     }
 
-    const { error } = await supabase
-      .from('courses')
-      .insert([newCourse]);
+    try {
+      const { error } = await supabase
+        .from('courses')
+        .insert([newCourse]);
 
-    if (error) {
-      toast.error('Kurs qo\'shishda xato');
-      console.error('Error adding course:', error);
-    } else {
-      toast.success('Kurs qo\'shildi!');
+      if (error) throw error;
+
+      toast.success('Kurs muvaffaqiyatli qo\'shildi!');
       setNewCourse({ title: '', description: '', price: '', category: '', image_url: '' });
       setShowForm(false);
       fetchCourses();
+    } catch (error) {
+      toast.error('Kurs qo\'shishda xato: ' + error.message);
+      console.error('Error adding course:', error);
     }
   };
 
@@ -109,42 +123,54 @@ const ManageCourses = () => {
       return;
     }
 
-    const { error } = await supabase
-      .from('courses')
-      .update(editingCourse)
-      .eq('id', editingId);
+    try {
+      const { error } = await supabase
+        .from('courses')
+        .update(editingCourse)
+        .eq('id', editingId);
 
-    if (error) {
-      toast.error('Kurs yangilashda xato');
-      console.error('Error updating course:', error);
-    } else {
-      toast.success('Kurs yangilandi!');
+      if (error) throw error;
+
+      toast.success('Kurs muvaffaqiyatli yangilandi!');
       setEditingId(null);
       setEditingCourse(null);
+      setShowForm(false);
       fetchCourses();
+    } catch (error) {
+      toast.error('Kurs yangilashda xato: ' + error.message);
+      console.error('Error updating course:', error);
     }
   };
 
   const deleteCourse = async (id, imageUrl) => {
-    if (!confirm('Kursni o\'chirishni xohlaysizmi?')) return;
+    if (!window.confirm('Kursni o\'chirishni xohlaysizmi?')) return;
 
-    const { error } = await supabase
-      .from('courses')
-      .delete()
-      .eq('id', id);
+    try {
+      const { error } = await supabase
+        .from('courses')
+        .delete()
+        .eq('id', id);
 
-    if (error) {
-      toast.error('Kurs o\'chirishda xato');
-    } else {
+      if (error) throw error;
+
       // Delete image from storage if exists
       if (imageUrl) {
-        const fileName = imageUrl.split('/').pop();
-        await supabase.storage
-          .from('course-images')
-          .remove([fileName]);
+        try {
+          const fileName = imageUrl.split('/').pop();
+          await supabase.storage
+            .from('course-images')
+            .remove([fileName]);
+        } catch (storageError) {
+          console.error('Error deleting image:', storageError);
+          // Don't show error to user as the course was deleted successfully
+        }
       }
-      toast.success('Kurs o\'chirildi!');
+      
+      toast.success('Kurs muvaffaqiyatli o\'chirildi!');
       fetchCourses();
+    } catch (error) {
+      toast.error('Kurs o\'chirishda xato: ' + error.message);
+      console.error('Error deleting course:', error);
     }
   };
 
@@ -166,22 +192,27 @@ const ManageCourses = () => {
 
   return (
     <div className="p-8">
-        <BackToDashboard/>
+      <BackToDashboard/>
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold">Kurslarni Boshqarish</h1>
           <p className="text-gray-600 mt-2">Jami {courses.length} ta kurs</p>
         </div>
         <button 
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700"
+          onClick={() => {
+            setShowForm(!showForm);
+            if (showForm) {
+              cancelEdit();
+            }
+          }}
+          className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700 transition-colors"
         >
           {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
           {showForm ? 'Yopish' : 'Kurs Qo\'shish'}
         </button>
       </div>
 
-      {/* Qo'shish/Tahrirlash formasi */}
+      {/* Form */}
       {showForm && (
         <form onSubmit={editingId ? updateCourse : addCourse} className="bg-white p-6 rounded-xl shadow-md mb-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -192,29 +223,28 @@ const ManageCourses = () => {
               onChange={(e) => editingId 
                 ? setEditingCourse({ ...editingCourse, title: e.target.value }) 
                 : setNewCourse({ ...newCourse, title: e.target.value })}
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               required
             />
             <input
+              type="text" 
+              placeholder="Kategoriya"
+              value={editingId ? editingCourse.category : newCourse.category}
+              onChange={(e) => editingId
+                ? setEditingCourse({ ...editingCourse, category: e.target.value })
+                : setNewCourse({ ...newCourse, category: e.target.value })}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+            <input
               type="text"
-              placeholder="Narx (masalan: 500,000 so'm)"
+              placeholder="Narx"
               value={editingId ? editingCourse.price : newCourse.price}
-              onChange={(e) => editingId 
-                ? setEditingCourse({ ...editingCourse, price: e.target.value }) 
+              onChange={(e) => editingId
+                ? setEditingCourse({ ...editingCourse, price: e.target.value })
                 : setNewCourse({ ...newCourse, price: e.target.value })}
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
           </div>
-          
-          <input
-            type="text"
-            placeholder="Kategoriya (masalan: Dasturlash, Dizayn)"
-            value={editingId ? editingCourse.category : newCourse.category}
-            onChange={(e) => editingId 
-              ? setEditingCourse({ ...editingCourse, category: e.target.value }) 
-              : setNewCourse({ ...newCourse, category: e.target.value })}
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-          />
           
           <textarea
             placeholder="Kurs tavsifi"
@@ -222,15 +252,15 @@ const ManageCourses = () => {
             onChange={(e) => editingId 
               ? setEditingCourse({ ...editingCourse, description: e.target.value }) 
               : setNewCourse({ ...newCourse, description: e.target.value })}
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             rows={4}
           />
 
-          {/* Rasm yuklash */}
+          {/* Image Upload */}
           <div className="space-y-3">
             <label className="block text-sm font-medium text-gray-700">Kurs rasmi</label>
             <div className="flex items-center space-x-4">
-              <label className={`flex items-center space-x-2 px-4 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <label className={`flex items-center space-x-2 px-4 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 <Upload className="w-5 h-5 text-gray-400" />
                 <span className="text-sm text-gray-600">
                   {uploading ? 'Yuklanmoqda...' : 'Rasm tanlang'}
@@ -270,14 +300,14 @@ const ManageCourses = () => {
             <button 
               type="submit" 
               disabled={uploading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
               {editingId ? 'Yangilash' : 'Qo\'shish'}
             </button>
             <button 
               type="button" 
               onClick={cancelEdit}
-              className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+              className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
             >
               Bekor qilish
             </button>
@@ -285,7 +315,7 @@ const ManageCourses = () => {
         </form>
       )}
 
-      {/* Kurslar jadvali */}
+      {/* Courses Table */}
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -308,12 +338,15 @@ const ManageCourses = () => {
                         src={course.image_url}
                         alt={course.title}
                         className="w-16 h-16 object-cover rounded-lg"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
                       />
-                    ) : (
-                      <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <Image className="w-6 h-6 text-gray-400" />
-                      </div>
-                    )}
+                    ) : null}
+                    <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center" style={{display: course.image_url ? 'none' : 'flex'}}>
+                      <Image className="w-6 h-6 text-gray-400" />
+                    </div>
                   </td>
                   <td className="p-4">
                     <div className="font-medium text-gray-900">{course.title}</div>
@@ -342,14 +375,14 @@ const ManageCourses = () => {
                     <div className="flex space-x-2">
                       <button 
                         onClick={() => startEdit(course)} 
-                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg"
+                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Tahrirlash"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => deleteCourse(course.id, course.image_url)} 
-                        className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg"
+                        className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
                         title="O'chirish"
                       >
                         <Trash2 className="w-4 h-4" />
